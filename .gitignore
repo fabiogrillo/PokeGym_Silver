@@ -1,0 +1,33 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+venv/
+.env/
+.venv/
+
+# Environment variables
+*.env
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# PyBoy SDL cache or logs
+*.log
+
+# Frames generated
+frames/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# VSCode settings
+.vscode/
+
+# Jupyter Notebook checkpoints (if you ever use them)
+.ipynb_checkpoints/
