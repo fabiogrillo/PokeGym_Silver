@@ -15,3 +15,6 @@ for i in range(20):
     action = env.action_space.sample()
     obs, reward, done, info = env.step(action)
     print(f"Step {i}: Reward {reward}")
+
+input("\n[INFO] Press Enter to close...")
+env.close()

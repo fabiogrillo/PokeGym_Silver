@@ -13,7 +13,7 @@ cumulative_reward = 0.0
 
 print("\n[INFO] Starting test with PositionReward...\n")
 
-for step in range(50):
+for step in range(100):
     action = env.action_space.sample()
     obs, reward, done, info = env.step(action)
     cumulative_reward += reward

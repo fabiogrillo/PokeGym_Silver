@@ -13,29 +13,28 @@ class PokemonSilver(gymnasium.Env):
     """
     Gym Environment that uses PyBoy to emulate Pokemon Silver
     """
-
-    def __init__(self, rom_path, render_mode="headless", save_frames=False, reward_strategy='hashing'):
+    def __init__(self, rom_path, render_mode="headless", save_frames=False, reward_strategy="hashing"):
         super().__init__()
 
         self.rom_path = rom_path
-        self.frame_counter = 0 # for saving purposes
+        self.frame_counter = 0
         self.save_frames = save_frames
         self.render_mode = render_mode
 
         # Mode configuration
-        if render_mode == 'human':
+        if render_mode == "human":
             self.pyboy = PyBoy(rom_path, window="SDL2")
-            self.pyboy.set_emulation_speed(1) # normal speed
-        elif render_mode == 'human-fast':
+            self.pyboy.set_emulation_speed(1)
+        elif render_mode == "human-fast":
             self.pyboy = PyBoy(rom_path, window="SDL2")
-            self.pyboy.set_emulation_speed(0) # max speed
-        elif render_mode == 'headless':
+            self.pyboy.set_emulation_speed(0)
+        elif render_mode == "headless":
             self.pyboy = PyBoy(rom_path, window="null")
-            self.pyboy.set_emulation_speed(0) # max speed
+            self.pyboy.set_emulation_speed(0)
         else:
             raise ValueError(f"Unknown render mode: {render_mode}")
 
-        # Set reward startegy
+        # Set reward strategy
         if reward_strategy == "hashing":
             self.reward_strategy = HashingReward()
         elif reward_strategy == "position":
@@ -44,19 +43,9 @@ class PokemonSilver(gymnasium.Env):
             raise ValueError("Invalid reward strategy")
 
         # Action space
-        """
-        0: no input
-        1: A
-        2: B
-        3: Start
-        4: Up
-        5: Down
-        6: Left
-        7: Right
-        """
         self.action_space = spaces.Discrete(8)
 
-        # Observation Space will be a grey image 160x144  (GameBoy resolution)
+        # Observation space (always the grayscale frame)
         self.observation_space = spaces.Box(
             low=0,
             high=255,
@@ -64,34 +53,19 @@ class PokemonSilver(gymnasium.Env):
             dtype=np.uint8
         )
 
-    def reset(self):
-        # Restart the rom
-        self.pyboy.stop()
-        
-        if self.render_mode == 'human':
-            self.pyboy = PyBoy(self.rom_path, window="SDL2")
-            self.pyboy.set_emulation_speed(1)
-        elif self.render_mode == 'human-fast':
-            self.pyboy = PyBoy(self.rom_path, window="SDL2")
-            self.pyboy.set_emulation_speed(0)
-        elif self.render_mode == 'headless':
-            self.pyboy = PyBoy(self.rom_path, window="null")
-            self.pyboy.set_emulation_speed(0)
-
-        # Load state file to skip intro
+    def reset(self, *, seed=None, options=None):
         try:
             with open("start_of_game.state", "rb") as f:
                 self.pyboy.load_state(f)
         except FileNotFoundError:
             print("[WARNING] State file `start_of_game.state` not found. Starting from fresh ROM.")
-        
-        # TICK to stabilize
+
         for _ in range(50):
             self.pyboy.tick()
-        
+
         obs = self._get_observation()
-        return obs
-    
+        return obs, {}
+
     def step(self, action):
         # Clean input
         for event in [
@@ -122,17 +96,14 @@ class PokemonSilver(gymnasium.Env):
         elif action == 7:
             action_event = WindowEvent.PRESS_ARROW_RIGHT
 
-        # Hold the action during all ticks
         if action_event is not None:
             self.pyboy.send_input(action_event)
 
-        # Advance emulator
         for _ in range(10):
             self.pyboy.tick()
 
-        # Important: release the action after ticking
         if action_event is not None:
-            release_event = {
+            release_event_map = {
                 WindowEvent.PRESS_BUTTON_A: WindowEvent.RELEASE_BUTTON_A,
                 WindowEvent.PRESS_BUTTON_B: WindowEvent.RELEASE_BUTTON_B,
                 WindowEvent.PRESS_BUTTON_START: WindowEvent.RELEASE_BUTTON_START,
@@ -140,30 +111,27 @@ class PokemonSilver(gymnasium.Env):
                 WindowEvent.PRESS_ARROW_DOWN: WindowEvent.RELEASE_ARROW_DOWN,
                 WindowEvent.PRESS_ARROW_LEFT: WindowEvent.RELEASE_ARROW_LEFT,
                 WindowEvent.PRESS_ARROW_RIGHT: WindowEvent.RELEASE_ARROW_RIGHT,
-            }[action_event]
-            self.pyboy.send_input(release_event)
+            }
+            release_event = release_event_map.get(action_event)
+            if release_event:
+                self.pyboy.send_input(release_event)
 
         obs = self._get_observation()
         reward = self.reward_strategy.compute_reward(obs)
+
         done = False
         info = {}
 
         return obs, reward, done, info
 
-    
     def render(self, mode="human"):
-        pass # windows already visible
+        pass
 
     def close(self):
         self.pyboy.stop()
 
     def _get_observation(self):
         pil_image = self.pyboy.screen.image
-        # Convert in numpy array (RGB)
         rgb_array = np.array(pil_image)
-        # convert in gray scale
         gray = cv2.cvtColor(rgb_array, cv2.COLOR_RGB2GRAY)
-        
         return gray
-
-
