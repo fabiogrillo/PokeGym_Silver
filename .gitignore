@@ -38,3 +38,6 @@ roms/
 # Exclude frames and videos
 outputs/frames/
 outputs/video_trials/
+
+# Exclude state files
+start_of_game.state

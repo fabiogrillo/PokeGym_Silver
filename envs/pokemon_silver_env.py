@@ -6,17 +6,21 @@ from pyboy.utils import WindowEvent
 import cv2
 import os
 
+from .rewards.hashing_reward import HashingReward
+from .rewards.position_reward import PositionReward
+
 class PokemonSilver(gymnasium.Env):
     """
     Gym Environment that uses PyBoy to emulate Pokemon Silver
     """
 
-    def __init__(self, rom_path, render_mode="headless", save_frames=False):
+    def __init__(self, rom_path, render_mode="headless", save_frames=False, reward_strategy='hashing'):
         super().__init__()
 
         self.rom_path = rom_path
         self.frame_counter = 0 # for saving purposes
         self.save_frames = save_frames
+        self.render_mode = render_mode
 
         # Mode configuration
         if render_mode == 'human':
@@ -31,7 +35,13 @@ class PokemonSilver(gymnasium.Env):
         else:
             raise ValueError(f"Unknown render mode: {render_mode}")
 
-        self.render_mode = render_mode
+        # Set reward startegy
+        if reward_strategy == "hashing":
+            self.reward_strategy = HashingReward()
+        elif reward_strategy == "position":
+            self.reward_strategy = PositionReward(self.pyboy)
+        else:
+            raise ValueError("Invalid reward strategy")
 
         # Action space
         """
@@ -68,6 +78,17 @@ class PokemonSilver(gymnasium.Env):
             self.pyboy = PyBoy(self.rom_path, window="null")
             self.pyboy.set_emulation_speed(0)
 
+        # Load state file to skip intro
+        try:
+            with open("start_of_game.state", "rb") as f:
+                self.pyboy.load_state(f)
+        except FileNotFoundError:
+            print("[WARNING] State file `start_of_game.state` not found. Starting from fresh ROM.")
+        
+        # TICK to stabilize
+        for _ in range(20):
+            self.pyboy.tick()
+        
         obs = self._get_observation()
         return obs
     
@@ -107,7 +128,7 @@ class PokemonSilver(gymnasium.Env):
         for i in range(10):
             self.pyboy.tick()
             
-            if self.save_frames and i == 9:
+            if self.save_frames:
                 # create dir to save images
                 if not os.path.exists("frames"):
                     os.makedirs("frames")
@@ -119,7 +140,9 @@ class PokemonSilver(gymnasium.Env):
             
 
         obs = self._get_observation()
-        reward = 0 # custom reward, 0 for now
+        frame_gray = obs
+
+        reward = self.reward_strategy.compute_reward(frame_gray)
         done = False # define episode's end criteria
         
         info = {}
