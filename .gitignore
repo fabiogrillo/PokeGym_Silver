@@ -31,3 +31,10 @@ Thumbs.db
 
 # Jupyter Notebook checkpoints (if you ever use them)
 .ipynb_checkpoints/
+
+# Exclude roms
+roms/
+
+# Exclude frames and videos
+outputs/frames/
+outputs/video_trials/

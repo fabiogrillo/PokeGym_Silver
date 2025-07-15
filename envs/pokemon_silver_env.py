@@ -4,20 +4,34 @@ import numpy as np
 from pyboy import PyBoy
 from pyboy.utils import WindowEvent
 import cv2
+import os
 
 class PokemonSilver(gymnasium.Env):
     """
     Gym Environment that uses PyBoy to emulate Pokemon Silver
     """
 
-    def __init__(self, rom_path):
+    def __init__(self, rom_path, render_mode="headless", save_frames=False):
         super().__init__()
 
         self.rom_path = rom_path
         self.frame_counter = 0 # for saving purposes
-        # Starting Pyboy no window
-        self.pyboy = PyBoy(rom_path, window="null")
-        self.pyboy.set_emulation_speed(0)
+        self.save_frames = save_frames
+
+        # Mode configuration
+        if render_mode == 'human':
+            self.pyboy = PyBoy(rom_path, window="SDL2")
+            self.pyboy.set_emulation_speed(1) # normal speed
+        elif render_mode == 'human-fast':
+            self.pyboy = PyBoy(rom_path, window="SDL2")
+            self.pyboy.set_emulation_speed(0) # max speed
+        elif render_mode == 'headless':
+            self.pyboy = PyBoy(rom_path, window="null")
+            self.pyboy.set_emulation_speed(0) # max speed
+        else:
+            raise ValueError(f"Unknown render mode: {render_mode}")
+
+        self.render_mode = render_mode
 
         # Action space
         """
@@ -43,8 +57,16 @@ class PokemonSilver(gymnasium.Env):
     def reset(self):
         # Restart the rom
         self.pyboy.stop()
-        self.pyboy = PyBoy(self.rom_path, window="null")
-        self.pyboy.set_emulation_speed(0)
+        
+        if self.render_mode == 'human':
+            self.pyboy = PyBoy(self.rom_path, window="SDL2")
+            self.pyboy.set_emulation_speed(1)
+        elif self.render_mode == 'human-fast':
+            self.pyboy = PyBoy(self.rom_path, window="SDL2")
+            self.pyboy.set_emulation_speed(0)
+        elif self.render_mode == 'headless':
+            self.pyboy = PyBoy(self.rom_path, window="null")
+            self.pyboy.set_emulation_speed(0)
 
         obs = self._get_observation()
         return obs
@@ -85,9 +107,13 @@ class PokemonSilver(gymnasium.Env):
         for i in range(10):
             self.pyboy.tick()
             
-            if i == 9:
+            if self.save_frames and i == 9:
+                # create dir to save images
+                if not os.path.exists("frames"):
+                    os.makedirs("frames")
                 frame = np.array(self.pyboy.screen.image)
-                frame_path = f"frames/frame_{self.frame_counter:05d}.png"
+                frame_path = f"outputs/frames/frame_{self.frame_counter:05d}.png"
+
                 cv2.imwrite(frame_path, cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
                 self.frame_counter += 1
             
@@ -101,12 +127,7 @@ class PokemonSilver(gymnasium.Env):
         return obs, reward, done, info
     
     def render(self, mode="human"):
-        # show window
-        if mode == 'human':
-            pyboy = PyBoy(self.rom_path, window="SDL2")
-            
-            while not pyboy._stopped:
-                pyboy.tick()
+        pass # windows already visible
 
     def close(self):
         self.pyboy.stop()
