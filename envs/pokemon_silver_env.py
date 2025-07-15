@@ -86,7 +86,7 @@ class PokemonSilver(gymnasium.Env):
             print("[WARNING] State file `start_of_game.state` not found. Starting from fresh ROM.")
         
         # TICK to stabilize
-        for _ in range(20):
+        for _ in range(50):
             self.pyboy.tick()
         
         obs = self._get_observation()
@@ -105,49 +105,51 @@ class PokemonSilver(gymnasium.Env):
         ]:
             self.pyboy.send_input(event)
 
-
         # Action map
+        action_event = None
         if action == 1:
-            self.pyboy.send_input(WindowEvent.PRESS_BUTTON_A)
-        if action == 2:
-            self.pyboy.send_input(WindowEvent.PRESS_BUTTON_B)
-        if action == 3:
-            self.pyboy.send_input(WindowEvent.PRESS_BUTTON_START)
-        if action == 4:
-            self.pyboy.send_input(WindowEvent.PRESS_ARROW_UP)
-        if action == 5:
-            self.pyboy.send_input(WindowEvent.PRESS_ARROW_DOWN)
-        if action == 6:
-            self.pyboy.send_input(WindowEvent.PRESS_ARROW_LEFT)
-        if action == 7:
-            self.pyboy.send_input(WindowEvent.PRESS_ARROW_RIGHT)
+            action_event = WindowEvent.PRESS_BUTTON_A
+        elif action == 2:
+            action_event = WindowEvent.PRESS_BUTTON_B
+        elif action == 3:
+            action_event = WindowEvent.PRESS_BUTTON_START
+        elif action == 4:
+            action_event = WindowEvent.PRESS_ARROW_UP
+        elif action == 5:
+            action_event = WindowEvent.PRESS_ARROW_DOWN
+        elif action == 6:
+            action_event = WindowEvent.PRESS_ARROW_LEFT
+        elif action == 7:
+            action_event = WindowEvent.PRESS_ARROW_RIGHT
 
-        # 0 -> no input
+        # Hold the action during all ticks
+        if action_event is not None:
+            self.pyboy.send_input(action_event)
 
-        # move 10 frames on to see result
-        for i in range(10):
+        # Advance emulator
+        for _ in range(10):
             self.pyboy.tick()
-            
-            if self.save_frames:
-                # create dir to save images
-                if not os.path.exists("frames"):
-                    os.makedirs("frames")
-                frame = np.array(self.pyboy.screen.image)
-                frame_path = f"outputs/frames/frame_{self.frame_counter:05d}.png"
 
-                cv2.imwrite(frame_path, cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
-                self.frame_counter += 1
-            
+        # Important: release the action after ticking
+        if action_event is not None:
+            release_event = {
+                WindowEvent.PRESS_BUTTON_A: WindowEvent.RELEASE_BUTTON_A,
+                WindowEvent.PRESS_BUTTON_B: WindowEvent.RELEASE_BUTTON_B,
+                WindowEvent.PRESS_BUTTON_START: WindowEvent.RELEASE_BUTTON_START,
+                WindowEvent.PRESS_ARROW_UP: WindowEvent.RELEASE_ARROW_UP,
+                WindowEvent.PRESS_ARROW_DOWN: WindowEvent.RELEASE_ARROW_DOWN,
+                WindowEvent.PRESS_ARROW_LEFT: WindowEvent.RELEASE_ARROW_LEFT,
+                WindowEvent.PRESS_ARROW_RIGHT: WindowEvent.RELEASE_ARROW_RIGHT,
+            }[action_event]
+            self.pyboy.send_input(release_event)
 
         obs = self._get_observation()
-        frame_gray = obs
-
-        reward = self.reward_strategy.compute_reward(frame_gray)
-        done = False # define episode's end criteria
-        
+        reward = self.reward_strategy.compute_reward(obs)
+        done = False
         info = {}
 
         return obs, reward, done, info
+
     
     def render(self, mode="human"):
         pass # windows already visible
