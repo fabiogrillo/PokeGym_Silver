@@ -7,17 +7,19 @@ then
     exit 1
 fi
 
-# Create folder if not exists
+# Default output dir
 OUTPUT_DIR="outputs/video_trials"
 mkdir -p "$OUTPUT_DIR"
 
-# Generate timestamp
-TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-
-# Compose video filename
-VIDEO_NAME="video_${TIMESTAMP}.mp4"
+# If output filename provided, use it; else generate one
+if [ -n "$1" ]; then
+    OUTPUT_PATH="$1"
+else
+    TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+    OUTPUT_PATH="${OUTPUT_DIR}/video_${TIMESTAMP}.mp4"
+fi
 
 # Make the video
-ffmpeg -framerate 30 -i outputs/frames/frame_%05d.png -c:v libx264 -pix_fmt yuv420p "${OUTPUT_DIR}/${VIDEO_NAME}.mp4"
+ffmpeg -y -framerate 30 -i outputs/frames/frame_%05d.png -c:v libx264 -pix_fmt yuv420p "$OUTPUT_PATH"
 
-echo "Video created: ${OUTPUT_DIR}/${VIDEO_NAME}"
+echo "Video created: $OUTPUT_PATH"
