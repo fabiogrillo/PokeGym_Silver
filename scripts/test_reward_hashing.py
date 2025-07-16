@@ -10,11 +10,14 @@ env = PokemonSilver(
 )
 
 obs = env.reset()
+cumulative_reward = 0.0
 
-for i in range(20):
+for step in range(20):
     action = env.action_space.sample()
     obs, reward, done, info = env.step(action)
-    print(f"Step {i}: Reward {reward}")
+    cumulative_reward += reward
+    
+    print(f"[Step {step}] Reward this step: {reward:.2f} | Cumulative: {cumulative_reward:.2f}")
 
 input("\n[INFO] Press Enter to close...")
 env.close()

@@ -11,15 +11,17 @@ from .rewards.position_reward import PositionReward
 
 class PokemonSilver(gymnasium.Env):
     """
-    Gym Environment that uses PyBoy to emulate Pokemon Silver
+    Gym Environment that uses PyBoy to emulate Pokemon Silver.
     """
-    def __init__(self, rom_path, render_mode="headless", save_frames=False, reward_strategy="hashing"):
+
+    def __init__(self, rom_path, render_mode="headless", save_frames=False, reward_strategy="hashing", hashing_threshold=5, max_steps=500):
         super().__init__()
 
         self.rom_path = rom_path
-        self.frame_counter = 0
         self.save_frames = save_frames
         self.render_mode = render_mode
+        self.max_steps = max_steps
+        self.step_counter = 0
 
         # Mode configuration
         if render_mode == "human":
@@ -34,9 +36,9 @@ class PokemonSilver(gymnasium.Env):
         else:
             raise ValueError(f"Unknown render mode: {render_mode}")
 
-        # Set reward strategy
+        # Reward strategy
         if reward_strategy == "hashing":
-            self.reward_strategy = HashingReward()
+            self.reward_strategy = HashingReward(threshold=hashing_threshold)
         elif reward_strategy == "position":
             self.reward_strategy = PositionReward(self.pyboy)
         else:
@@ -45,15 +47,17 @@ class PokemonSilver(gymnasium.Env):
         # Action space
         self.action_space = spaces.Discrete(8)
 
-        # Observation space (always the grayscale frame)
+        # Observation space
         self.observation_space = spaces.Box(
             low=0,
             high=255,
-            shape=(160,144),
+            shape=(1, 144, 160),
             dtype=np.uint8
         )
 
     def reset(self, *, seed=None, options=None):
+        self.step_counter = 0
+
         try:
             with open("start_of_game.state", "rb") as f:
                 self.pyboy.load_state(f)
@@ -67,7 +71,9 @@ class PokemonSilver(gymnasium.Env):
         return obs, {}
 
     def step(self, action):
-        # Clean input
+        self.step_counter += 1
+
+        # Release all buttons
         for event in [
             WindowEvent.RELEASE_BUTTON_A,
             WindowEvent.RELEASE_BUTTON_B,
@@ -79,7 +85,7 @@ class PokemonSilver(gymnasium.Env):
         ]:
             self.pyboy.send_input(event)
 
-        # Action map
+        # Map action
         action_event = None
         if action == 1:
             action_event = WindowEvent.PRESS_BUTTON_A
@@ -103,7 +109,7 @@ class PokemonSilver(gymnasium.Env):
             self.pyboy.tick()
 
         if action_event is not None:
-            release_event_map = {
+            release_event = {
                 WindowEvent.PRESS_BUTTON_A: WindowEvent.RELEASE_BUTTON_A,
                 WindowEvent.PRESS_BUTTON_B: WindowEvent.RELEASE_BUTTON_B,
                 WindowEvent.PRESS_BUTTON_START: WindowEvent.RELEASE_BUTTON_START,
@@ -111,18 +117,22 @@ class PokemonSilver(gymnasium.Env):
                 WindowEvent.PRESS_ARROW_DOWN: WindowEvent.RELEASE_ARROW_DOWN,
                 WindowEvent.PRESS_ARROW_LEFT: WindowEvent.RELEASE_ARROW_LEFT,
                 WindowEvent.PRESS_ARROW_RIGHT: WindowEvent.RELEASE_ARROW_RIGHT,
-            }
-            release_event = release_event_map.get(action_event)
+            }.get(action_event)
+
             if release_event:
                 self.pyboy.send_input(release_event)
 
         obs = self._get_observation()
         reward = self.reward_strategy.compute_reward(obs)
 
-        done = False
-        info = {}
+        # Distinzione terminazione
+        terminated = False  # Qui puoi mettere logica se serve un "game over"
+        truncated = self.step_counter >= self.max_steps
 
-        return obs, reward, done, info
+        info = {"steps": self.step_counter}
+
+        return obs, reward, terminated, truncated, info
+
 
     def render(self, mode="human"):
         pass
@@ -134,4 +144,6 @@ class PokemonSilver(gymnasium.Env):
         pil_image = self.pyboy.screen.image
         rgb_array = np.array(pil_image)
         gray = cv2.cvtColor(rgb_array, cv2.COLOR_RGB2GRAY)
+        
+        gray = np.expand_dims(gray, axis=0)  # shape becomes (1, 160, 144)
         return gray
