@@ -14,7 +14,7 @@ def make_env():
     return _init
 
 if __name__ == "__main__":
-    num_envs = 4
+    num_envs = 10
     env = SubprocVecEnv([make_env() for _ in range(num_envs)])
 
     model = PPO("CnnPolicy", env, verbose=1, tensorboard_log="./tensorboard_logs/position")

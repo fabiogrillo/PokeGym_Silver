@@ -10,10 +10,10 @@ class PositionReward:
         pos = (x, y)
 
         if pos == self.last_pos:
-            reward = -0.05  # Penalize not moving
+            reward = -0.1  # Penalize not moving
             status = "Same as last"
         elif pos in self.visited:
-            reward = 0.1  # Small reward
+            reward = -0.05  # Small reward
             status = "Already Visited"
         else:
             reward = 1.0

@@ -22,12 +22,12 @@ class HashingReward:
         h = imagehash.phash(Image.fromarray(frame_2d))
 
         if self.last_hash is not None and abs(h - self.last_hash) == 0:
-            reward = -0.05
+            reward = -0.1
             status = "Identical frame (no change)"
         else:
             for existing in self.hashes:
                 if abs(h - existing) < self.threshold:
-                    reward = 0.1
+                    reward = -0.05
                     status = "Similar to known frame"
                     break
             else:
