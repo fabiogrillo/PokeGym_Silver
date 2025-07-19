@@ -6,7 +6,7 @@ from envs.pokemon_silver_env import PokemonSilver
 from gymnasium.wrappers import RecordEpisodeStatistics
 
 ROM_PATH = "roms/Pokemon_Silver.gbc"
-MAX_STEPS = 200
+MAX_STEPS = 500
 
 def evaluate_model(model_path, reward_strategy):
     timestamp = time.strftime("%Y%m%d_%H%M%S")

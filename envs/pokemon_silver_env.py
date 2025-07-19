@@ -14,7 +14,7 @@ class PokemonSilver(gymnasium.Env):
     Gym Environment that uses PyBoy to emulate Pokemon Silver.
     """
 
-    def __init__(self, rom_path, render_mode="headless", save_frames=False, reward_strategy="hashing", hashing_threshold=5, max_steps=500):
+    def __init__(self, rom_path, render_mode="headless", save_frames=False, reward_strategy="hashing", hashing_threshold=5, max_steps=2000):
         super().__init__()
 
         self.rom_path = rom_path
@@ -22,6 +22,10 @@ class PokemonSilver(gymnasium.Env):
         self.render_mode = render_mode
         self.max_steps = max_steps
         self.step_counter = 0
+
+        # Create frames if not exists
+        if save_frames and not os.path.exists("outputs/frames"):
+            os.makedirs("outputs/frames", exist_ok=True)
 
         # Mode configuration
         if render_mode == "human":

@@ -21,12 +21,12 @@ if __name__ == "__main__":
 
     # Checkpoint every 100,000 steps
     checkpoint_callback = CheckpointCallback(
-        save_freq=100_000,
+        save_freq=1_000_000,
         save_path="outputs/models_hashing/",
         name_prefix="ppo_pokemon_hashing"
     )
 
-    total_timesteps = 4000 * 500  # 1000 episodes x 500 steps
+    total_timesteps = 10000 * 500  # 1000 episodes x 500 steps
     model.learn(total_timesteps=total_timesteps, 
                 callback=checkpoint_callback)
 
