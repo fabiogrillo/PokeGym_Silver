@@ -15,7 +15,7 @@ print("\n[INFO] Starting test with PositionReward...\n")
 
 for step in range(100):
     action = env.action_space.sample()
-    obs, reward, done, info = env.step(action)
+    obs, reward, terminated, truncated, info = env.step(action)
     cumulative_reward += reward
 
     print(f"[Step {step}] Reward this step: {reward:.2f} | Cumulative: {cumulative_reward:.2f}")

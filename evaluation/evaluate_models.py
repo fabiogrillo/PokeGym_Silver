@@ -64,8 +64,8 @@ def evaluate_model(model_path, reward_strategy):
 
 if __name__ == "__main__":
     models = [
-        ("ppo_pokemon_hashing_v1.zip", "hashing"),
-        ("ppo_pokemon_position_v1.zip", "position")
+        ("ppo_pokemon_hashing_v2.zip", "hashing"),
+        ("ppo_pokemon_position_v2.zip", "position")
     ]
 
     for model_path, reward_strategy in models:
