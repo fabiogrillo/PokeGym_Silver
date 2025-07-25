@@ -2,7 +2,7 @@ from pyboy import PyBoy
 
 # Avvia la finestra
 pyboy = PyBoy("roms/Pokemon_Silver.gbc", window="SDL2")
-pyboy.set_emulation_speed(1)
+pyboy.set_emulation_speed(6)
 
 print("\n[INFO] Start game, press Start, choose name, get in overworld.")
 print("[INFO] Once ready, type 's' + Enter to save.\n")

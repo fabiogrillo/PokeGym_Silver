@@ -42,6 +42,7 @@ outputs/
 start_of_game.state
 
 # Exclude tensorboard
-tensorboard_logs/
+tensorboard/
+trained_agents/
 
 *.zip
