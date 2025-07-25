@@ -1,446 +1,331 @@
-# 🎮 PokéGym Silver - Reinforcement Learning per Pokémon Silver
+# PokeGym Silver - Pokemon Silver RL Environment
 
-Un ambiente Gymnasium personalizzato per addestrare agenti di Reinforcement Learning a giocare a Pokémon Silver usando PyBoy e Stable Baselines3.
+A Gymnasium-based reinforcement learning environment for Pokemon Silver, designed to train agents to explore and progress through the game using PPO (Proximal Policy Optimization).
 
-## 📋 Indice
+## 🎮 Overview
 
-- [Overview](#overview)
-- [Struttura del Progetto](#struttura-del-progetto)
-- [Installazione](#installazione)
-- [Quick Start](#quick-start)
-- [Environment Design](#environment-design)
-- [Training System](#training-system)
-- [Evaluation](#evaluation)
-- [Troubleshooting](#troubleshooting)
+This project implements a custom Gymnasium environment that interfaces with Pokemon Silver through the PyBoy Game Boy emulator. The agent learns to play the game by receiving rewards for exploration, progression, and achieving game objectives like collecting badges and visiting new locations.
 
-## 🎯 Overview
+### Key Features
 
-Questo progetto implementa un ambiente di RL per Pokémon Silver con l'obiettivo di addestrare un agente PPO (Proximal Policy Optimization) a completare il gioco. L'agente impara attraverso:
+- **Multi-modal observations**: Combines visual input (game frames), spatial memory (exploration map), and game state (badges, party size)
+- **Sophisticated reward system**: Encourages exploration while preventing getting stuck
+- **Optimized training**: Leverages modern GPUs (tested on RTX 5080) with parallel environments
+- **Comprehensive evaluation tools**: Track progress, visualize exploration patterns, and compare checkpoints
 
-- **Esplorazione del mondo di gioco**: Reward per visitare nuove aree
-- **Progressione nella storia**: Reward maggiori per raggiungere città chiave
-- **Ottenimento di medaglie**: Forte incentivo per progressi concreti
-- **Cattura di Pokémon**: Reward per espandere il team
-
-### Caratteristiche Principali
-
-- 🚀 **Training parallelo** su 32+ environments
-- 🎮 **Emulazione Game Boy** tramite PyBoy
-- 📊 **Monitoring real-time** con TensorBoard
-- 🏃 **Ottimizzato per GPU** (testato su RTX 5080)
-- 💾 **Checkpoint automatici** e resume del training
-- 📈 **Sistema di reward multi-componente**
-
-## 📁 Struttura del Progetto
+## 📁 Project Structure
 
 ```
 PokeGym_Silver/
-│
-├── envs/                          # Environment Gymnasium
-│   └── pokemon_silver_env.py      # Classe principale PokemonSilver
-│
-├── trainers/                      # Script di training
-│   ├── train_agent.py            # Training base
-│   ├── train_agent_optimized.py  # Training ottimizzato GPU
-│   └── resume_training.py        # Utility per riprendere training
-│
-├── evaluation/                    # Script di valutazione
-│   ├── evaluate_model.py         # Valutazione completa
-│   ├── evaluate_checkpoints.py   # Confronto checkpoint
-│   └── quick_eval.py            # Test veloce modelli
-│
-├── scripts/                       # Utility e test
-│   ├── create_state.py           # Crea save state iniziale
-│   ├── test_env.py              # Test environment
-│   ├── env_check.py             # Verifica compatibilità
-│   └── landmark_offsets.py      # Costanti mappe (deprecato)
-│
-├── roms/                         # ROM e save files
-│   ├── Pokemon_Silver.gbc       # ROM del gioco (non inclusa)
-│   └── *.state                  # Save states PyBoy
-│
-├── trained_agents/               # Modelli salvati
-│   └── exploration_v*/          # Versioni training
-│       ├── checkpoints/         # Checkpoint periodici
-│       ├── best_model/          # Miglior modello
-│       └── eval_logs/           # Log valutazioni
-│
-├── tensorboard/                  # Log TensorBoard
-│   └── exploration_v*/          # Metriche training
-│
-├── map_data.json                # Database coordinate mappe
-├── start_of_game.state         # Save state iniziale
-├── requirements.txt            # Dipendenze Python
-└── README.md                   # Questo file
-```
-
-## 🛠️ Installazione
-
-### Prerequisiti
-
-- Python 3.8+
-- CUDA 11.8+ (per GPU support)
-- 16GB+ RAM
-- ROM di Pokémon Silver (versione USA)
-
-### Setup
-
-```bash
-# Clone repository
-git clone https://github.com/username/PokeGym_Silver.git
-cd PokeGym_Silver
-
-# Crea virtual environment
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# o
-venv\Scripts\activate     # Windows
-
-# Installa dipendenze
-pip install -r requirements.txt
-
-# Posiziona la ROM
-cp /path/to/Pokemon_Silver.gbc roms/
-```
-
-### Verifica Installazione
-
-```bash
-# Test environment
-python scripts/test_env.py
-
-# Verifica CUDA
-python -c "import torch; print(f'CUDA: {torch.cuda.is_available()}')"
+├── envs/
+│   └── pokemon_silver_env.py      # Main Gymnasium environment
+├── trainers/
+│   ├── train_agent.py             # Basic training script
+│   ├── train_agent_optimized.py   # GPU-optimized training
+│   └── resume_training.py         # Resume from checkpoint
+├── evaluation/
+│   ├── evaluate_model.py          # Full evaluation suite
+│   ├── evaluate_checkpoints.py    # Compare multiple checkpoints
+│   └── quick_eval.py              # Quick single-episode test
+├── scripts/
+│   ├── create_state.py            # Create game save states
+│   ├── test_env.py                # Environment testing
+│   └── landmark_offsets.py        # Map coordinate helpers
+├── roms/
+│   └── Pokemon_Silver.gbc         # Game ROM (not included)
+├── trained_agents/                # Saved models
+├── tensorboard/                   # Training logs
+├── map_data.json                  # Map coordinate database
+├── start_of_game.state           # Initial game state
+└── requirements.txt               # Python dependencies
 ```
 
 ## 🚀 Quick Start
 
-### 1. Training da Zero
+### Prerequisites
+
+1. **Python 3.8+** with virtual environment
+2. **CUDA-capable GPU** (optional but recommended)
+3. **Pokemon Silver ROM** (USA version)
+
+### Installation
 
 ```bash
-# Training ottimizzato per GPU
-python trainers/train_agent_optimized.py
+# Clone repository
+git clone https://github.com/yourusername/PokeGym_Silver.git
+cd PokeGym_Silver
 
-# Training base (più lento)
-python trainers/train_agent.py
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Place your Pokemon Silver ROM in roms/
+cp /path/to/Pokemon_Silver.gbc roms/
 ```
 
-### 2. Resume Training
+### Training
 
 ```bash
-# Trova checkpoint esistenti
-python trainers/resume_training.py
+# Start new training (optimized for GPU)
+python trainers/train_agent_optimized.py
 
-# Riprendi da checkpoint specifico
+# Resume from checkpoint
+python trainers/resume_training.py  # Shows available checkpoints
 python trainers/train_agent_optimized.py --resume path/to/checkpoint.zip --timesteps 1000000
 ```
 
-### 3. Valutazione
+### Evaluation
 
 ```bash
-# Test veloce dell'ultimo modello
+# Quick test of latest model
 python evaluation/quick_eval.py
 
-# Valutazione completa
+# Full evaluation with statistics
 python evaluation/evaluate_model.py --episodes 10
 
-# Confronta checkpoint
+# Compare checkpoints
 python evaluation/evaluate_checkpoints.py
 ```
 
-### 4. Monitoring
-
-```bash
-# Avvia TensorBoard
-tensorboard --logdir tensorboard/exploration_v3
-
-# Apri browser su http://localhost:6006
-```
-
-## 🎮 Environment Design
+## 🧠 Environment Design
 
 ### Observation Space
 
-L'environment fornisce un dizionario di osservazioni multi-modali:
+The environment provides a dictionary observation with multiple modalities:
 
-```python
-{
-    "screens": Box(72, 80, 3),      # Stack di 3 frame consecutivi
-    "map": Box(48, 48, 1),          # Mappa esplorazione locale
-    "recent_actions": MultiDiscrete([7]*3),  # Ultime 3 azioni
-    "badges": MultiBinary(16),       # 8 Johto + 8 Kanto badges
-    "party_size": Box(1,)           # Numero Pokémon nel team
-}
-```
+1. **screens** (72×80×3): Stack of 3 recent game frames (downscaled 2x)
+   - Captures motion and animations
+   - Grayscale for efficiency
 
-#### Screens (Visual Input)
-- **Risoluzione**: 72×80 (downscaled 2x dall'originale 144×160)
-- **Frame Stack**: 3 frame consecutivi per catturare movimento
-- **Preprocessing**: Grayscale, normalizzato 0-255
+2. **map** (48×48×1): Local view of exploration map
+   - 255 = visited, 0 = unvisited
+   - Centered on player position
+   - Helps agent remember where it's been
 
-#### Map (Exploration Memory)
-- **Dimensione**: 48×48 tiles centrati sul giocatore
-- **Encoding**: 255 = visitato, 0 = non visitato
-- **Scopo**: Memoria a lungo termine dell'esplorazione
+3. **recent_actions** (3,): Last 3 actions taken
+   - Prevents action loops
+   - Provides temporal context
 
-#### Game State
-- **Recent Actions**: Previene loop di azioni
-- **Badges**: Tracking progressi principali
-- **Party Size**: Proxy per progressi generali
+4. **badges** (16,): Binary array of gym badges
+   - 8 Johto + 8 Kanto badges
+   - Major progression indicator
+
+5. **party_size** (1,): Number of Pokemon in party
+   - Proxy for game progress
 
 ### Action Space
 
-7 azioni discrete mappate sui controlli Game Boy:
-
-```python
-0: DOWN
-1: LEFT  
-2: RIGHT
-3: UP
-4: A (conferma/interagisci)
-5: B (annulla/corri)
-6: START (menu)
-```
+7 discrete actions corresponding to Game Boy buttons:
+- 0-3: Arrow keys (Down, Left, Right, Up)
+- 4: A button
+- 5: B button  
+- 6: Start button
 
 ### Reward System
 
-Sistema multi-componente per guidare comportamenti complessi:
+Multi-component reward designed to encourage exploration and progression:
 
 ```python
-{
-    'exploration': unique_tiles * 0.02,      # Incentiva movimento
-    'map_progress': location_idx * 2.0,      # Città story-critical
-    'badges': total_badges * 5.0,            # Progressi maggiori
-    'party': party_size * 0.5,               # Cattura Pokémon
-    'stuck_penalty': -0.1 * excess_visits,   # Anti-stalling
-    'map_diversity': unique_maps * 0.5       # Varietà esplorazione
+rewards = {
+    'exploration': unique_tiles * 0.02,      # Explore new areas
+    'map_progress': map_progress * 2.0,      # Reach important cities
+    'badges': total_badges * 5.0,            # Collect gym badges
+    'party': party_size * 0.5,               # Build Pokemon team
+    'stuck_penalty': -0.1 * excess_visits,   # Don't stay in one place
+    'map_diversity': len(seen_maps) * 0.5    # Visit different maps
 }
 ```
 
-#### Design Rationale
+**Key Design Principles:**
+- **Differential rewards**: Only the change from previous step is given
+- **Multi-objective**: Balance exploration with progression
+- **Anti-stalling**: Penalties increase quadratically after 100 visits to same spot
 
-1. **Exploration (0.02/tile)**: 
-   - Reward piccolo ma costante
-   - Incentiva scoperta continua
-   - Previene stagnazione iniziale
+### Map System
 
-2. **Map Progress (2.0/location)**:
-   - Boost significativi per location critiche
-   - Guida verso obiettivi principali
-   - 15 location ordinate per progressione
+The environment tracks player position globally across all game maps:
+- Local coordinates from game RAM are converted to global coordinates
+- `map_data.json` contains offsets for all 400+ game locations
+- Exploration is tracked in a 220×220 global map
 
-3. **Badges (5.0/badge)**:
-   - Reward maggiore del gioco
-   - Obiettivi chiari e misurabili
-   - 16 totali (Johto + Kanto)
+## 🏋️ Training Architecture
 
-4. **Stuck Penalty**:
-   - Attiva dopo 100 visite stesso tile
-   - Cresce quadraticamente
-   - Forza esplorazione nuova
+### PPO Algorithm
 
-5. **Reward Differenziale**:
-   - `step_reward = total_current - total_previous`
-   - Evita reward inflation
-   - Focus su miglioramenti incrementali
+We use Proximal Policy Optimization (PPO) because:
+- **Stable**: Clips policy updates to prevent destructive changes
+- **Sample efficient**: Reuses collected data multiple times
+- **General purpose**: Works well without extensive tuning
 
-### Memory Mapping
-
-Indirizzi RAM critici per Pokémon Silver:
+### Hyperparameters (Optimized for RTX 5080)
 
 ```python
-0xDA00: Map bank
-0xDA01: Map ID  
-0xDA02: X position
-0xDA03: Y position
-0xD57C: Johto badges
-0xD57D: Kanto badges
-0xDA22: Party size
-0xD116: Battle status (0 = overworld)
-```
-
-## 🧠 Training System
-
-### Algoritmo: PPO (Proximal Policy Optimization)
-
-PPO scelto per:
-- **Stabilità**: Non diverge facilmente
-- **Sample efficiency**: Riusa dati multiple volte
-- **Generalità**: Funziona bene senza tuning eccessivo
-
-### Hyperparameters Ottimizzati
-
-```python
-# Parallelizzazione
-N_ENVS = 32                 # Environments paralleli
-BATCH_SIZE = 8192          # Batch per GPU update
-N_STEPS = 256              # Steps prima di learning
-
-# Learning
-LEARNING_RATE = 3e-4       # Con decay lineare
-N_EPOCHS = 4               # Epochs per update
-CLIP_RANGE = 0.2          # PPO clipping
-ENT_COEF = 0.01           # Exploration bonus
-
-# Reward
-GAMMA = 0.99              # Discount factor
-GAE_LAMBDA = 0.95         # Advantage estimation
+N_ENVS = 32              # Parallel game instances
+BATCH_SIZE = 8192        # Large batch to utilize GPU
+N_STEPS = 256            # Steps before policy update
+LEARNING_RATE = 3e-4     # With linear decay
+ENT_COEF = 0.01          # Exploration bonus
+CLIP_RANGE = 0.2         # PPO clipping parameter
+GAE_LAMBDA = 0.95        # Advantage estimation
+GAMMA = 0.99             # Discount factor
 ```
 
 ### Neural Network Architecture
 
-```python
-policy_kwargs = {
-    "net_arch": {
-        "pi": [512, 512, 256],  # Policy network
-        "vf": [512, 512, 256]   # Value network
-    },
-    "activation_fn": ReLU,
-    "normalize_images": True,
-    "share_features_extractor": False
-}
-```
+- **Separate networks** for policy (actions) and value (reward prediction)
+- **3 hidden layers** of 512, 512, 256 units with ReLU activation
+- **Image normalization** built-in
+- **No shared features** between policy and value heads
 
-- **Reti separate**: Policy e Value indipendenti
-- **3 hidden layers**: Capacità per pattern complessi
-- **512-512-256 neuroni**: Bilanciamento capacità/velocità
+### Training Optimizations
 
-### Training Pipeline
+1. **Parallel environments**: 32 games running simultaneously
+2. **Large batches**: 8192 samples per update (vs typical 64-2048)
+3. **Reduced evaluation frequency**: Every 500k steps instead of 100k
+4. **Shorter episodes**: 1024 steps for faster iteration
 
-1. **Raccolta Dati** (N_ENVS × N_STEPS = 8192 samples)
-2. **Calcolo Advantages** (GAE con λ=0.95)
-3. **Ottimizzazione** (4 epochs, 32 minibatch)
-4. **Logging** (TensorBoard ogni update)
-5. **Checkpoint** (ogni 100k steps)
-6. **Evaluation** (ogni 500k steps)
+## 📊 Monitoring Progress
 
-### GPU Optimization
+### TensorBoard
 
-- **Batch size 8192**: Satura GPU memory bandwidth
-- **Minibatch 256**: Ottimale per RTX 5080
-- **Mixed precision**: Non usato (stabilità > velocità)
-- **Pin memory**: Automatico in PyTorch
-
-## 📊 Evaluation
-
-### Metriche Principali
-
-1. **Total Reward**: Somma cumulativa componenti
-2. **Unique Tiles**: Tiles globali uniche visitate
-3. **Map Transitions**: Cambi di mappa/zona
-4. **Badges**: Medaglie ottenute (max 16)
-5. **Episode Length**: Steps prima di truncation
-
-### Visualizzazioni
-
-- **Exploration Heatmap**: Mappa di calore visite
-- **Progress Plots**: Reward/tiles nel tempo
-- **Checkpoint Comparison**: Performance nel training
-- **Combined Heatmap**: Media multi-episodio
-
-### Best Practices Evaluation
-
+Monitor training in real-time:
 ```bash
-# 1. Test rapido per sanity check
-python evaluation/quick_eval.py --episodes 1
-
-# 2. Valutazione statistica (10+ episodi)
-python evaluation/evaluate_model.py --episodes 20 --no-render
-
-# 3. Confronto checkpoint per overfitting
-python evaluation/evaluate_checkpoints.py
-
-# 4. Test con rendering per debugging
-python evaluation/evaluate_model.py --episodes 1 --render
+tensorboard --logdir tensorboard/exploration_v3
+# Open http://localhost:6006
 ```
+
+Key metrics:
+- `rollout/ep_rew_mean`: Average episode reward
+- `game/unique_tiles`: Exploration progress
+- `game/badges`: Gym badges collected
+- `game/map_transitions`: Movement between areas
+
+### Evaluation Metrics
+
+The evaluation scripts track:
+- Total reward achieved
+- Unique tiles explored
+- Map transitions (movement between areas)
+- Badges collected
+- Exploration heatmaps
+
+## 🔧 Advanced Usage
+
+### Custom Reward Functions
+
+Modify `calculate_reward()` in `pokemon_silver_env.py`:
+
+```python
+def calculate_reward(self):
+    rewards = {}
+    # Add your custom reward components
+    rewards['my_metric'] = self.calculate_my_metric() * weight
+    # ...
+```
+
+### Different Starting Points
+
+Create new save states:
+```python
+# In scripts/create_state.py
+pyboy = PyBoy('roms/Pokemon_Silver.gbc')
+# Play to desired starting point
+pyboy.save_state('custom_start.state')
+```
+
+### Hyperparameter Tuning
+
+Key parameters to adjust in `train_agent_optimized.py`:
+- `N_ENVS`: More = faster but more RAM
+- `BATCH_SIZE`: Larger = more stable but slower
+- `ENT_COEF`: Higher = more exploration
+- `LEARNING_RATE`: Lower = more stable convergence
 
 ## 🐛 Troubleshooting
 
-### TensorBoard Vuoto
+### GPU Not Being Used
+- Check CUDA installation: `python -c "import torch; print(torch.cuda.is_available())"`
+- Ensure `device="cuda"` in PPO initialization
+- Monitor GPU usage with `nvidia-smi`
 
-```bash
-# Verifica directory corretta
-ls -la tensorboard/
+### TensorBoard Empty
+- Check correct directory: `tensorboard --logdir tensorboard/exploration_v3`
+- Wait for first logging interval (5000 steps)
+- Verify files exist: `ls tensorboard/exploration_v3/PPO*/events*`
 
-# Riavvia con path giusto
-tensorboard --logdir tensorboard/exploration_v3 --reload_interval 30
-```
-
-### Training Lento
-
-1. **Verifica GPU usage**:
-   ```bash
-   nvidia-smi -l 1  # Monitor ogni secondo
-   ```
-
-2. **Reduce evaluation frequency**:
-   ```python
-   EVAL_FREQ = 1_000_000  # Da 500k
-   ```
-
-3. **Aumenta batch size** (se VRAM permette):
-   ```python
-   BATCH_SIZE = 16384  # Da 8192
-   ```
+### Training Too Slow
+- Reduce `EVAL_FREQ` to avoid evaluation pauses
+- Decrease episode length with `max_steps`
+- Use more parallel environments (`N_ENVS`)
 
 ### Out of Memory
+- Reduce `BATCH_SIZE` or `N_ENVS`
+- Use gradient accumulation
+- Clear PyBoy states between episodes
 
-```python
-# Riduci environments paralleli
-N_ENVS = 16  # Da 32
+## 📈 Performance Expectations
 
-# O riduci batch size
-BATCH_SIZE = 4096  # Da 8192
-```
+With default settings on RTX 5080:
+- **Training speed**: ~2000-3000 steps/second
+- **First badge**: Usually within 500k-1M steps
+- **Multiple badges**: 2-5M steps
+- **GPU usage**: 60-80% utilization
+- **VRAM usage**: 8-12GB
 
-### Checkpoint Corrotti
+## 🤝 Contributing
 
-```bash
-# Trova checkpoint validi
-python -c "
-from stable_baselines3 import PPO
-import glob
-for ckpt in glob.glob('trained_agents/**/*.zip', recursive=True):
-    try:
-        PPO.load(ckpt, device='cpu')
-        print(f'✓ {ckpt}')
-    except:
-        print(f'✗ {ckpt}')
-"
-```
-
-## 🎯 Obiettivi e Sfide
-
-### Obiettivi Raggiunti
-- ✅ Esplorazione efficiente del mondo
-- ✅ Navigazione tra città
-- ✅ Interazione con NPC/oggetti
-- ✅ Gestione menu base
-
-### Work in Progress
-- 🔄 Combattimenti strategici
-- 🔄 Cattura Pokémon mirata
-- 🔄 Gestione inventario
-- 🔄 Team building
-
-### Sfide Tecniche
-- **Sparse rewards**: Medaglie molto distanziate
-- **Partial observability**: Non tutta la info è su schermo
-- **Long horizons**: Obiettivi a 10k+ steps
-- **Stochasticity**: RNG battaglie/catture
-
-## 📚 Riferimenti
-
-- [PyBoy Documentation](https://github.com/Baekalfen/PyBoy)
-- [Stable Baselines3](https://stable-baselines3.readthedocs.io/)
-- [Pokémon Silver RAM Map](https://datacrystal.romhacking.net/wiki/Pokémon_Gold_and_Silver:RAM_map)
-- [Gymnasium](https://gymnasium.farama.org/)
+Contributions welcome! Areas for improvement:
+- Additional reward components (items, Pokemon levels, etc.)
+- Better action space (macro actions, action repeat)
+- Curriculum learning (progressive difficulty)
+- Multi-agent training
+- Integration with other Pokemon games
 
 ## 📄 License
 
-Questo progetto è per scopi educativi e di ricerca. Pokémon è un marchio registrato di Nintendo/Game Freak.
+This project is for educational and research purposes only. Pokemon is a trademark of Nintendo/Game Freak.
 
----
+## 🙏 Acknowledgments
 
-**Autore**: Fabio Grillo
-**Ultimo aggiornamento**: Gennaio 2025
+- [PyBoy](https://github.com/Baekalfen/PyBoy) - Game Boy emulator
+- [Stable Baselines3](https://github.com/DLR-RM/stable-baselines3) - RL algorithms
+- [Gymnasium](https://github.com/Farama-Foundation/Gymnasium) - RL environment framework
+- Inspired by [PokemonRedExperiments](https://github.com/PWhiddy/PokemonRedExperiments)
+
+## 📚 Technical Details
+
+### RAM Addresses (Pokemon Silver)
+
+Key memory locations used:
+```
+0xDA00: Current map bank
+0xDA01: Current map number
+0xDA02: X coordinate
+0xDA03: Y coordinate
+0xD57C: Johto badges
+0xD57D: Kanto badges
+0xDA22: Party Pokemon count
+0xD116: Battle status (0 = not in battle)
+```
+
+### Coordinate System
+
+- **Local**: Each map has coordinates (0,0) to (width,height)
+- **Global**: All maps placed in unified coordinate system
+- **Conversion**: `global = local + map_offset` (from map_data.json)
+
+### State Management
+
+- Game state saved/loaded via PyBoy's state system
+- Always starts from `start_of_game.state` for consistency
+- States are ~32KB each (Game Boy RAM snapshot)
+
+### Performance Considerations
+
+- Frame skip: 24 frames per action (~0.4 seconds game time)
+- Downscaling: 144×160 → 72×80 (4x reduction)
+- Grayscale: RGB not needed, saves computation
+- Memory efficiency: Reuse NumPy arrays where possible

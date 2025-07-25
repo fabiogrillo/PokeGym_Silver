@@ -14,7 +14,7 @@ BASE_DIR = Path(__file__).parent.parent
 ROM_PATH = BASE_DIR / "roms/Pokemon_Silver.gbc"
 
 def quick_evaluate(model_path, episodes=1, render=True):
-    """Valutazione veloce di un checkpoint"""
+    """Quick evaluation of a checkpoint"""
     
     if not os.path.exists(model_path):
         cprint(f"❌ Model not found: {model_path}", "red")
@@ -26,7 +26,7 @@ def quick_evaluate(model_path, episodes=1, render=True):
     env = PokemonSilver(
         rom_path=str(ROM_PATH),
         render_mode="human" if render else "headless",
-        max_steps=5000  # Limite per test veloce
+        max_steps=5000  # Limit for quick test
     )
     
     for ep in range(episodes):
@@ -55,26 +55,26 @@ def quick_evaluate(model_path, episodes=1, render=True):
         cprint(f"✅ Episode complete:", "green")
         cprint(f"   Total Reward: {total_reward:.2f}", "blue")
         cprint(f"   Steps: {steps}", "blue")
-        cprint(f"   Unique Tiles: {info.get('unique_tiles', 0)}", "blue")
-        cprint(f"   Badges: {info.get('badges', 0)}", "blue")
+        cprint(f"   Unique Tiles: {info.get('unique_tiles', 0)}", "blue") # type: ignore
+        cprint(f"   Badges: {info.get('badges', 0)}", "blue") # type: ignore
         
     env.close()
 
 if __name__ == "__main__":
-    # Trova il miglior modello disponibile
+    # Find the best available model
     model_dirs = [
         BASE_DIR / "trained_agents/exploration_v2/best_model/best_model.zip",
         BASE_DIR / "trained_agents/exploration_v2/final_model.zip",
     ]
     
-    # Trova anche gli ultimi checkpoint
+    # Also find latest checkpoints
     checkpoint_dir = BASE_DIR / "trained_agents/exploration_v2"
     if checkpoint_dir.exists():
         checkpoints = sorted([f for f in checkpoint_dir.glob("ppo_pokemon_silver_*.zip")])
         if checkpoints:
-            model_dirs.insert(0, checkpoints[-1])  # Ultimo checkpoint
+            model_dirs.insert(0, checkpoints[-1])  # Latest checkpoint
     
-    # Prova a trovare un modello
+    # Try to find a model
     model_path = None
     for path in model_dirs:
         if path.exists():

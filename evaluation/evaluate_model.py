@@ -2,16 +2,16 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from stable_baselines3 import PPO
-from envs.pokemon_silver_env import PokemonSilver
+from envs.pokemon_silver_env_v2 import PokemonSilverV2
 from termcolor import cprint
 import json
 from pathlib import Path
 
 ROM_PATH = "roms/Pokemon_Silver.gbc"
-MODEL_DIR = "trained_agents/exploration_v2"
+MODEL_DIR = "trained_agents/exploration_v4"
 
 def evaluate_model(model_path, num_episodes=5, render=True, save_stats=True):
-    """Valuta il modello salvato"""
+    """Evaluate the saved model"""
     
     cprint(f"📂 Loading model from {model_path}", "cyan")
     model = PPO.load(model_path)
@@ -30,10 +30,10 @@ def evaluate_model(model_path, num_episodes=5, render=True, save_stats=True):
     for episode in range(num_episodes):
         cprint(f"\n🎮 Episode {episode + 1}/{num_episodes}", "yellow")
         
-        env = PokemonSilver(
+        env = PokemonSilverV2(
             rom_path=ROM_PATH, 
             render_mode="human" if render else "headless",
-            max_steps=20000  # Episodi più lunghi per evaluation
+            max_steps=20000  # Longer episodes for evaluation
         )
         
         obs, _ = env.reset()
@@ -41,7 +41,7 @@ def evaluate_model(model_path, num_episodes=5, render=True, save_stats=True):
         total_reward = 0
         step_count = 0
         
-        # Per tracking progressi durante episodio
+        # For tracking progress during episode
         step_rewards = []
         unique_tiles_progress = []
         
@@ -56,7 +56,7 @@ def evaluate_model(model_path, num_episodes=5, render=True, save_stats=True):
             step_rewards.append(total_reward)
             unique_tiles_progress.append(info.get("unique_tiles", 0))
             
-            # Print progress ogni 500 steps
+            # Print progress every 500 steps
             if step_count % 500 == 0:
                 cprint(f"  Step {step_count}: Reward={total_reward:.2f}, "
                       f"Tiles={info.get('unique_tiles', 0)}, "
@@ -65,7 +65,7 @@ def evaluate_model(model_path, num_episodes=5, render=True, save_stats=True):
             done = terminated or truncated
         
         # Collect episode stats
-        final_info = info
+        final_info = info # type: ignore
         all_stats["rewards"].append(total_reward)
         all_stats["steps"].append(step_count)
         all_stats["unique_tiles"].append(final_info.get("unique_tiles", 0))
@@ -164,7 +164,7 @@ def evaluate_model(model_path, num_episodes=5, render=True, save_stats=True):
     return all_stats
 
 def compare_checkpoints(model_dir, num_episodes=3):
-    """Confronta diversi checkpoint del modello"""
+    """Compare different model checkpoints"""
     
     checkpoints = sorted([
         f for f in os.listdir(model_dir) 
@@ -179,7 +179,7 @@ def compare_checkpoints(model_dir, num_episodes=3):
     
     results = {}
     
-    for checkpoint in checkpoints[-5:]:  # Valuta solo gli ultimi 5
+    for checkpoint in checkpoints[-5:]:  # Evaluate only last 5
         checkpoint_path = os.path.join(model_dir, checkpoint)
         cprint(f"\n🔍 Evaluating {checkpoint}...", "yellow")
         

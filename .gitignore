@@ -1,48 +1,59 @@
-# Byte-compiled / optimized / DLL files
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
-
-# Virtual environment
+*.so
+.Python
 venv/
-.env/
-.venv/
+ENV/
+env/
+.venv
 
-# Environment variables
-*.env
+# PyCharm
+.idea/
 
-# Distribution / packaging
-build/
-dist/
-*.egg-info/
-
-# PyBoy SDL cache or logs
-*.log
-
-# Frames generated
-frames/
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# VSCode settings
+# VS Code
 .vscode/
 
-# Jupyter Notebook checkpoints (if you ever use them)
-.ipynb_checkpoints/
+# ROMs and Game Files
+roms/*.gbc
+roms/*.gb
+roms/*.ram
+roms/*.rtc
+roms/*.state
+*.gbc
+*.gb
+*.sav
 
-# Exclude roms
-roms/
-
-# Exclude frames and videos
-outputs/
-
-# Exclude state files
-start_of_game.state
-
-# Exclude tensorboard
-tensorboard/
+# Training outputs
 trained_agents/
-
+tensorboard/
+logs/
+checkpoints/
 *.zip
+
+# Evaluation results
+evaluation_results/
+*.png
+*.jpg
+*.mp4
+*.avi
+
+# System files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Project specific
+start_of_game.state
+rollouts/
+final_states/
+*.jpeg
+
+# Keep structure
+!trained_agents/.gitkeep
+!tensorboard/.gitkeep
+!roms/.gitkeep
+!evaluation/.gitkeep

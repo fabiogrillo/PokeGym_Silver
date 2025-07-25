@@ -15,13 +15,13 @@ from stable_baselines3.common.vec_env import SubprocVecEnv, VecFrameStack
 from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback, EvalCallback
 from stable_baselines3.common.logger import configure
 
-from envs.pokemon_silver_env import PokemonSilver
+from envs.pokemon_silver_env_v2 import PokemonSilverV2
 
 # Paths assoluti per evitare problemi
 BASE_DIR = Path(__file__).parent.parent
 ROM_PATH = BASE_DIR / "roms/Pokemon_Silver.gbc"
-SAVE_PATH = BASE_DIR / "trained_agents/exploration_v3"
-TENSORBOARD_LOG = BASE_DIR / "tensorboard/exploration_v3"
+SAVE_PATH = BASE_DIR / "trained_agents/exploration_v4"
+TENSORBOARD_LOG = BASE_DIR / "tensorboard/exploration_v4"
 
 # Configurazione ottimizzata per RTX 5080
 TOTAL_TIMESTEPS = 10_000_000
@@ -42,6 +42,33 @@ MINIBATCH_SIZE = 256  # Minibatch per ottimizzare GPU usage
 SAVE_PATH.mkdir(parents=True, exist_ok=True)
 TENSORBOARD_LOG.mkdir(parents=True, exist_ok=True)
 
+# Num Checkpoints
+MAX_CHECKPOINTS = 3
+
+class LimitedCheckpointCallback(CheckpointCallback):
+    """Custom callback that keeps only the last N checkpoints"""
+    def __init__(self, max_checkpoints=3, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.max_checkpoints = max_checkpoints
+        self.checkpoints = []
+    
+    def _on_step(self) -> bool:
+        result = super()._on_step()
+        
+        # If a new checkpoint was saved
+        if self.n_calls % self.save_freq == 0:
+            checkpoint_path = Path(self.save_path) / f"{self.name_prefix}_{self.num_timesteps}_steps.zip"
+            self.checkpoints.append(checkpoint_path)
+            
+            # Remove old checkpoints if exceeding limit
+            while len(self.checkpoints) > self.max_checkpoints:
+                old_checkpoint = self.checkpoints.pop(0)
+                if old_checkpoint.exists():
+                    old_checkpoint.unlink()
+                    cprint(f"🗑️ Removed old checkpoint: {old_checkpoint.name}", "yellow")
+        
+        return result
+    
 class OptimizedProgressCallback(BaseCallback):
     """Callback ottimizzato con logging meno frequente"""
     def __init__(self, log_interval=5000, verbose=0):
@@ -68,7 +95,7 @@ class OptimizedProgressCallback(BaseCallback):
 def make_env(rank, seed=0):
     """Crea environment con configurazione ottimizzata"""
     def _init():
-        env = PokemonSilver(
+        env = PokemonSilverV2(
             rom_path=str(ROM_PATH),
             render_mode="headless",
             max_steps=1024  # Episodi MOLTO più corti per training veloce
@@ -93,7 +120,7 @@ def main(resume_path=None, start_timesteps=0):
     cprint(f"📊 TensorBoard directory: {TENSORBOARD_LOG}", "blue")
     cprint(f"💾 Save directory: {SAVE_PATH}", "blue")
     
-    # Verifica CUDA
+    # Check CUDA
     if torch.cuda.is_available():
         cprint(f"✅ CUDA available! Device: {torch.cuda.get_device_name(0)}", "green")
         cprint(f"   VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB", "green")
@@ -104,13 +131,13 @@ def main(resume_path=None, start_timesteps=0):
     cprint(f"🎮 Creating {N_ENVS} parallel environments...", "cyan")
     env = SubprocVecEnv([make_env(i) for i in range(N_ENVS)])
     
-    # Eval env con meno episodi
-    eval_env = SubprocVecEnv([make_env(N_ENVS + i) for i in range(2)])  # Solo 2 eval envs
+    # Eval env with fewer episodes
+    eval_env = SubprocVecEnv([make_env(N_ENVS + i) for i in range(2)])  # Only 2 eval envs
     
-    # Setup logger con path assoluto
+    # Setup logger with absolute path
     new_logger = configure(str(TENSORBOARD_LOG), ["tensorboard", "stdout"])
     
-    # Crea o carica modello
+    # Create or load model
     if resume_path and os.path.exists(resume_path):
         cprint(f"📂 Resuming from checkpoint: {resume_path}", "yellow")
         cprint(f"   Starting from timestep: {start_timesteps:,}", "yellow")
@@ -122,26 +149,26 @@ def main(resume_path=None, start_timesteps=0):
             device="cuda",
         )
         
-        # Reset num_timesteps se necessario
+        # Reset num_timesteps if necessary
         if start_timesteps > 0:
             model.num_timesteps = start_timesteps
         
-        # Aggiorna learning rate schedule
+        # Update learning rate schedule
         model.learning_rate = linear_schedule(LEARNING_RATE)
         
         cprint("✅ Model loaded successfully!", "green")
     else:
         cprint("🆕 Creating new model...", "cyan")
         
-        # Crea modello PPO con configurazione ottimizzata per GPU
+        # Create PPO model with GPU-optimized configuration
         policy_kwargs = {
             "net_arch": dict(
-                pi=[512, 512, 256],  # Network più profondo
+                pi=[512, 512, 256],  # Deeper network
                 vf=[512, 512, 256]
             ),
             "activation_fn": torch.nn.ReLU,
             "normalize_images": True,
-            "share_features_extractor": False,  # Reti separate per policy e value
+            "share_features_extractor": False,  # Separate networks for policy and value
         }
         
         model = PPO(
@@ -169,8 +196,9 @@ def main(resume_path=None, start_timesteps=0):
     
     model.set_logger(new_logger)
     
-    # Callbacks ottimizzati
-    checkpoint_callback = CheckpointCallback(
+    # Optimized callbacks
+    checkpoint_callback = LimitedCheckpointCallback(
+        max_checkpoints=MAX_CHECKPOINTS,
         save_freq=CHECKPOINT_INTERVAL // N_ENVS,
         save_path=str(SAVE_PATH),
         name_prefix="ppo_pokemon_silver",
@@ -178,15 +206,15 @@ def main(resume_path=None, start_timesteps=0):
         save_vecnormalize=False,
     )
     
-    # Eval callback con meno episodi e meno frequente
+    # Eval callback with fewer episodes and less frequent
     eval_callback = EvalCallback(
         eval_env,
         best_model_save_path=str(SAVE_PATH / "best_model"),
         log_path=str(SAVE_PATH / "eval_logs"),
-        eval_freq=EVAL_FREQ // N_ENVS,  # Molto meno frequente!
+        eval_freq=EVAL_FREQ // N_ENVS,  # Much less frequent!
         deterministic=True,
         render=False,
-        n_eval_episodes=2,  # Solo 2 episodi invece di 5
+        n_eval_episodes=2,  # Only 2 episodes instead of 5
         warn=False,
     )
     
@@ -194,7 +222,7 @@ def main(resume_path=None, start_timesteps=0):
     
     callbacks = [checkpoint_callback, eval_callback, progress_callback]
     
-    # Training con gestione interruzioni
+    # Training with interruption handling
     try:
         cprint("🎮 Starting optimized training...", "green")
         cprint(f"   Environments: {N_ENVS}", "blue")
@@ -202,7 +230,7 @@ def main(resume_path=None, start_timesteps=0):
         cprint(f"   Minibatch size: {MINIBATCH_SIZE}", "blue")
         cprint(f"   Update frequency: every {N_STEPS * N_ENVS} steps", "blue")
         
-        # Calcola timesteps rimanenti
+        # Calculate remaining timesteps
         remaining_timesteps = TOTAL_TIMESTEPS - start_timesteps
         if remaining_timesteps <= 0:
             cprint("⚠️ Training already completed!", "yellow")
@@ -213,26 +241,26 @@ def main(resume_path=None, start_timesteps=0):
         model.learn(
             total_timesteps=remaining_timesteps,
             callback=callbacks,
-            log_interval=1,  # Log ogni update
+            log_interval=1,  # Log every update
             progress_bar=True,
-            reset_num_timesteps=False,  # Importante per resume!
+            reset_num_timesteps=False,  # Important for resume!
         )
         
     except KeyboardInterrupt:
         cprint("\n⏹️ Training interrupted by user", "red")
         
     finally:
-        # Salva modello corrente
+        # Save current model
         interrupted_path = SAVE_PATH / f"interrupted_{model.num_timesteps}"
         model.save(str(interrupted_path))
         cprint(f"💾 Current model saved to {interrupted_path}", "yellow")
         
-        # Salva anche come final model
+        # Also save as final model
         final_model_path = SAVE_PATH / "final_model"
         model.save(str(final_model_path))
         cprint(f"💾 Final model saved to {final_model_path}", "green")
         
-        # Salva metadata
+        # Save metadata
         import json
         metadata = {
             "total_timesteps_completed": int(model.num_timesteps),
@@ -246,7 +274,7 @@ def main(resume_path=None, start_timesteps=0):
         with open(SAVE_PATH / "metadata.json", "w") as f:
             json.dump(metadata, f, indent=2)
         
-        # Chiudi environments
+        # Close environments
         env.close()
         eval_env.close()
         
@@ -275,7 +303,7 @@ if __name__ == "__main__":
         pass
     
     if not tb_running:
-        # Lancia TensorBoard con path assoluto
+        # Launch TensorBoard with absolute path
         tb_process = subprocess.Popen(
             ["tensorboard", "--logdir", str(TENSORBOARD_LOG), "--port", str(tb_port)],
             stdout=subprocess.DEVNULL,
@@ -288,4 +316,4 @@ if __name__ == "__main__":
         main(resume_path=args.resume, start_timesteps=args.timesteps)
     finally:
         if not tb_running and 'tb_process' in locals():
-            tb_process.terminate()
+            tb_process.terminate() # type: ignore

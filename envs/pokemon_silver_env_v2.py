@@ -7,10 +7,16 @@ import os
 from skimage.transform import downscale_local_mean
 from collections import deque
 import json
+from pathlib import Path
+import mediapy as media
 
 # Load map data
 with open("map_data.json", "r") as f:
     MAP_DATA = json.load(f)
+
+# Load events data
+with open("events.json", "r") as f:
+    EVENT_DATA = json.load(f)
 
 # Create dictionary for fast lookup
 MAP_TO_GLOBAL_OFFSET = {}
@@ -20,14 +26,18 @@ for region in MAP_DATA["regions"]:
     MAP_TO_GLOBAL_OFFSET[map_id] = (coords[1], coords[0])  # (row, col)
 
 PAD = 20
-GLOBAL_MAP_SHAPE = (180 + PAD * 2, 180 + PAD * 2)  # Increased for safety
+GLOBAL_MAP_SHAPE = (180 + PAD * 2, 180 + PAD * 2)
 
-class PokemonSilver(gymnasium.Env):
+# Event flags memory range
+EVENT_FLAGS_START = 0xD7B7
+EVENT_FLAGS_END = 0xD8B6
+
+class PokemonSilverV2(gymnasium.Env):
     """
-    Gym Environment for Pokemon Silver with exploration-based reward.
+    Enhanced Gym Environment for Pokemon Silver with health, level, events tracking and video recording.
     """
 
-    def __init__(self, rom_path, render_mode="headless", max_steps=2048*80, save_video=False):
+    def __init__(self, rom_path, render_mode="headless", max_steps=2048*80, save_video=False, video_dir="rollouts"):
         super().__init__()
 
         self.rom_path = rom_path
@@ -37,8 +47,15 @@ class PokemonSilver(gymnasium.Env):
         self.frame_stacks = 3
         self.reset_count = 0
         self.save_video = save_video
+        self.video_dir = Path(video_dir)
+        self.video_dir.mkdir(exist_ok=True)
+        
+        # Video writers
+        self.full_frame_writer = None
+        self.model_frame_writer = None
+        self.map_frame_writer = None
 
-        # Essential map progression (corrected for Silver)
+        # Essential map progression
         self.essential_map_locations = {
             v: i for i, v in enumerate([
                 1,   # New Bark Town
@@ -62,10 +79,10 @@ class PokemonSilver(gymnasium.Env):
         # PyBoy setup
         if render_mode == "human":
             self.pyboy = PyBoy(rom_path, window="SDL2")
-            self.pyboy.set_emulation_speed(5)
+            self.pyboy.set_emulation_speed(3)
         elif render_mode == "human-fast":
             self.pyboy = PyBoy(rom_path, window="SDL2")
-            self.pyboy.set_emulation_speed(0)
+            self.pyboy.set_emulation_speed(6)
         elif render_mode == "headless":
             self.pyboy = PyBoy(rom_path, window="null")
             self.pyboy.set_emulation_speed(0)
@@ -94,11 +111,12 @@ class PokemonSilver(gymnasium.Env):
 
         self.output_shape = (72, 80, self.frame_stacks)
         self.coords_pad = 12
+        self.enc_freqs = 8  # For Fourier encoding
 
         # Action space
         self.action_space = spaces.Discrete(len(self.valid_actions))
 
-        # Corrected observation space
+        # Enhanced observation space
         self.observation_space = spaces.Dict(
             {
                 "screens": spaces.Box(low=0, high=255, shape=self.output_shape, dtype=np.uint8),
@@ -107,6 +125,9 @@ class PokemonSilver(gymnasium.Env):
                 "recent_actions": spaces.MultiDiscrete([len(self.valid_actions)] * self.frame_stacks),
                 "badges": spaces.MultiBinary(16),  # 8 Johto + 8 Kanto
                 "party_size": spaces.Box(low=0, high=6, shape=(1,), dtype=np.uint8),
+                "health": spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32),
+                "level": spaces.Box(low=-1, high=1, shape=(self.enc_freqs,), dtype=np.float32),
+                "events": spaces.MultiBinary((EVENT_FLAGS_END - EVENT_FLAGS_START + 1) * 8),
             }
         )
 
@@ -132,11 +153,26 @@ class PokemonSilver(gymnasium.Env):
         self.last_map_id = None
         self.map_transition_count = 0
         
+        # Health and level tracking
+        self.last_health = 1.0
+        self.max_level_sum = 0
+        self.total_healing_reward = 0
+        self.died_count = 0
+        
+        # Event tracking
+        self.base_event_flags = self.count_event_flags()
+        self.max_event_flags = 0
+        self.current_event_flags_set = {}
+        
         # For reward tracking
         self.last_reward_components = {}
         self.total_reward = 0
         
         self.reset_count += 1
+        
+        # Start video if enabled
+        if self.save_video and self.step_count == 0:
+            self.start_video()
         
         return self._get_obs(), {}
     
@@ -156,15 +192,70 @@ class PokemonSilver(gymnasium.Env):
         screen = self.render()
         self.update_recent_screens(screen)
 
+        # Get level sum for Fourier encoding
+        level_sum = 0.02 * sum([
+            self.read_m(a) for a in [
+                0xDA49,  # Pokemon 1 level
+                0xDA79,  # Pokemon 2 level
+                0xDAA9,  # Pokemon 3 level
+                0xDAD9,  # Pokemon 4 level
+                0xDB09,  # Pokemon 5 level
+                0xDB39,  # Pokemon 6 level
+            ]
+        ])
+
         observation = {
             "screens": self.recent_screens,
             "map": self.get_explore_map()[:,:,None],
             "recent_actions": self.recent_actions.copy(),
             "badges": self.get_badges_array(),
             "party_size": np.array([self.get_party_size()], dtype=np.uint8),
+            "health": np.array([self.read_hp_fraction()], dtype=np.float32),
+            "level": self.fourier_encode(level_sum),
+            "events": self.read_event_bits(),
         }
 
         return observation
+    
+    def fourier_encode(self, val):
+        """Fourier encoding for continuous values"""
+        return np.sin(val * 2 ** np.arange(self.enc_freqs)).astype(np.float32)
+    
+    def read_hp_fraction(self):
+        """Read total HP fraction of all Pokemon in party"""
+        hp_sum = 0
+        max_hp_sum = 0
+        
+        # Party Pokemon HP addresses
+        hp_addrs = [
+            (0xDA4C, 0xDA4E),  # Pokemon 1 current/max HP
+            (0xDA7C, 0xDA7E),  # Pokemon 2
+            (0xDAAC, 0xDAAE),  # Pokemon 3
+            (0xDADC, 0xDADE),  # Pokemon 4
+            (0xDB0C, 0xDB0E),  # Pokemon 5
+            (0xDB3C, 0xDB3E),  # Pokemon 6
+        ]
+        
+        for curr_addr, max_addr in hp_addrs:
+            curr_hp = self.read_m(curr_addr) * 256 + self.read_m(curr_addr + 1)
+            max_hp = self.read_m(max_addr) * 256 + self.read_m(max_addr + 1)
+            hp_sum += curr_hp
+            max_hp_sum += max_hp
+        
+        return hp_sum / max(max_hp_sum, 1)
+    
+    def read_event_bits(self):
+        """Read all event flag bits"""
+        bits = []
+        for addr in range(EVENT_FLAGS_START, EVENT_FLAGS_END + 1):
+            byte_val = self.read_m(addr)
+            for i in range(8):
+                bits.append((byte_val >> i) & 1)
+        return np.array(bits, dtype=np.int8)
+    
+    def count_event_flags(self):
+        """Count total number of set event flags"""
+        return sum(self.read_event_bits())
     
     def get_badges_array(self):
         """Get badge array (8 Johto + 8 Kanto)"""
@@ -247,6 +338,9 @@ class PokemonSilver(gymnasium.Env):
         self.recent_actions[0] = action
     
     def step(self, action):
+        if self.save_video and self.step_count == 0:
+            self.start_video()
+            
         self.run_action_on_emulator(action)
         self.update_recent_actions(action)
 
@@ -259,6 +353,9 @@ class PokemonSilver(gymnasium.Env):
         if in_battle:
             self.battles_encountered += 1
 
+        # Update health tracking
+        self.update_heal_reward()
+
         # Calculate reward
         reward = self.calculate_reward()
         
@@ -268,7 +365,15 @@ class PokemonSilver(gymnasium.Env):
         
         obs = self._get_obs()
         
+        # Update event tracking
+        if self.step_count % 100 == 0:
+            self.update_event_tracking()
+        
         self.step_count += 1
+        
+        # Save video frame
+        if self.save_video:
+            self.add_video_frame()
         
         info = {
             "step": self.step_count,
@@ -277,6 +382,10 @@ class PokemonSilver(gymnasium.Env):
             "map_transitions": self.map_transition_count,
             "battles": self.battles_encountered,
             "badges": sum(self.get_badges_array()),
+            "hp_fraction": self.read_hp_fraction(),
+            "level_sum": self.get_levels_sum(),
+            "events": self.max_event_flags - self.base_event_flags,
+            "healing_reward": self.total_healing_reward,
         }
         
         return obs, reward, terminated, truncated, info
@@ -323,6 +432,53 @@ class PokemonSilver(gymnasium.Env):
         x, y = c[0] + PAD, c[1] + PAD
         if 0 <= x < self.explore_map.shape[0] and 0 <= y < self.explore_map.shape[1]:
             self.explore_map[x, y] = 255
+    
+    def get_levels_sum(self):
+        """Get sum of all Pokemon levels"""
+        levels = [
+            self.read_m(0xDA49),  # Pokemon 1
+            self.read_m(0xDA79),  # Pokemon 2
+            self.read_m(0xDAA9),  # Pokemon 3
+            self.read_m(0xDAD9),  # Pokemon 4
+            self.read_m(0xDB09),  # Pokemon 5
+            self.read_m(0xDB39),  # Pokemon 6
+        ]
+        return sum(levels)
+    
+    def update_heal_reward(self):
+        """Track healing actions"""
+        cur_health = self.read_hp_fraction()
+        party_size = self.get_party_size()
+        
+        # If health increased and party size didn't change
+        if cur_health > self.last_health and party_size > 0:
+            if self.last_health > 0:
+                heal_amount = cur_health - self.last_health
+                self.total_healing_reward += heal_amount * heal_amount * 10
+            else:
+                # Revived from fainted
+                self.died_count += 1
+                self.total_healing_reward += 5
+        
+        self.last_health = cur_health
+    
+    def update_event_tracking(self):
+        """Update event flag tracking"""
+        current_flags = self.count_event_flags()
+        self.max_event_flags = max(self.max_event_flags, current_flags)
+        
+        # Track which specific events are set
+        event_bits = self.read_event_bits()
+        addr_offset = 0
+        
+        for addr in range(EVENT_FLAGS_START, EVENT_FLAGS_END + 1):
+            for bit in range(8):
+                if event_bits[addr_offset * 8 + bit]:
+                    key = f"0x{addr:X}-{bit}"
+                    if key in EVENT_DATA and key not in self.current_event_flags_set:
+                        self.current_event_flags_set[key] = EVENT_DATA[key]
+                        print(f"Event unlocked: {EVENT_DATA[key]}")
+            addr_offset += 1
 
     def calculate_reward(self):
         """Calculate multi-component reward"""
@@ -348,7 +504,22 @@ class PokemonSilver(gymnasium.Env):
         party_size = self.get_party_size()
         rewards['party'] = party_size * 0.5
         
-        # 5. Penalty for staying in same spot
+        # 5. Level reward
+        level_sum = self.get_levels_sum()
+        if level_sum > self.max_level_sum:
+            rewards['level'] = (level_sum - self.max_level_sum) * 1.0
+            self.max_level_sum = level_sum
+        else:
+            rewards['level'] = 0
+        
+        # 6. Event reward
+        current_events = self.count_event_flags() - self.base_event_flags
+        rewards['events'] = current_events * 0.5
+        
+        # 7. Healing reward
+        rewards['healing'] = self.total_healing_reward
+        
+        # 8. Penalty for staying in same spot
         current_coord = f"x:{self.get_game_coords()[0]} y:{self.get_game_coords()[1]} m:{self.get_game_coords()[2]}"
         visit_count = self.visited_coords_count.get(current_coord, 0)
         if visit_count > 100:
@@ -356,8 +527,11 @@ class PokemonSilver(gymnasium.Env):
         else:
             rewards['stuck_penalty'] = 0
         
-        # 6. Map diversity reward
+        # 9. Map diversity reward
         rewards['map_diversity'] = len(self.seen_maps) * 0.5
+        
+        # 10. Death penalty
+        rewards['death_penalty'] = -self.died_count * 5.0
         
         # Calculate total reward as difference
         total_current = sum(rewards.values())
@@ -368,6 +542,56 @@ class PokemonSilver(gymnasium.Env):
         self.total_reward = total_current
         
         return step_reward
-
+    
+    def start_video(self):
+        """Start video recording"""
+        if self.full_frame_writer is not None:
+            self.full_frame_writer.close()
+        if self.model_frame_writer is not None:
+            self.model_frame_writer.close()
+        if self.map_frame_writer is not None:
+            self.map_frame_writer.close()
+        
+        base_name = f"episode_{self.reset_count}_reward_{self.total_reward:.0f}"
+        
+        # Full resolution video
+        full_path = self.video_dir / f"full_{base_name}.mp4"
+        self.full_frame_writer = media.VideoWriter(
+            str(full_path), (144, 160), fps=60, input_format="gray"
+        )
+        self.full_frame_writer.__enter__()
+        
+        # Model input video
+        model_path = self.video_dir / f"model_{base_name}.mp4"
+        self.model_frame_writer = media.VideoWriter(
+            str(model_path), self.output_shape[:2], fps=60, input_format="gray"
+        )
+        self.model_frame_writer.__enter__()
+        
+        # Exploration map video
+        map_path = self.video_dir / f"map_{base_name}.mp4"
+        self.map_frame_writer = media.VideoWriter(
+            str(map_path), (self.coords_pad*4, self.coords_pad*4), fps=60, input_format="gray"
+        )
+        self.map_frame_writer.__enter__()
+    
+    def add_video_frame(self):
+        """Add frame to video"""
+        if self.full_frame_writer:
+            self.full_frame_writer.add_image(self.render(reduce_res=False)[:,:,0])
+        if self.model_frame_writer:
+            self.model_frame_writer.add_image(self.render(reduce_res=True)[:,:,0])
+        if self.map_frame_writer:
+            self.map_frame_writer.add_image(self.get_explore_map()[:,:,0])
+    
     def close(self):
+        """Close environment and save video"""
+        if self.save_video:
+            if self.full_frame_writer:
+                self.full_frame_writer.close()
+            if self.model_frame_writer:
+                self.model_frame_writer.close()
+            if self.map_frame_writer:
+                self.map_frame_writer.close()
+        
         self.pyboy.stop()

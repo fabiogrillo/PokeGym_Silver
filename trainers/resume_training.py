@@ -12,40 +12,32 @@ OLD_PATH = BASE_DIR / "trained_agents/exploration_v2"
 NEW_PATH = BASE_DIR / "trained_agents/exploration_v3"
 
 def find_latest_checkpoint():
-    """Trova l'ultimo checkpoint salvato"""
+    """Find the latest saved checkpoint"""
     if not OLD_PATH.exists():
         return None, 0
     
-    checkpoints = []
-    for f in OLD_PATH.glob("ppo_pokemon_silver_*.zip"):
-        # Estrai il numero dal nome del file
-        parts = f.stem.split('_')
-        for part in reversed(parts):
-            try:
-                timesteps = int(part)
-                checkpoints.append((f, timesteps))
-                break
-            except ValueError:
-                continue
-    
-    if not checkpoints:
-        # Prova a cercare altri pattern
-        for f in OLD_PATH.glob("*.zip"):
-            if f.name not in ["best_model.zip", "final_model.zip"]:
-                # Default a 0 se non riusciamo a estrarre timesteps
-                checkpoints.append((f, 0))
-    
+    checkpoints = sorted([f for f in OLD_PATH.glob("ppo_pokemon_silver_*.zip")])
     if not checkpoints:
         return None, 0
     
-    # Ordina per timesteps
-    checkpoints.sort(key=lambda x: x[1])
-    latest, timesteps = checkpoints[-1]
+    latest = checkpoints[-1]
+    # Extract timesteps from filename
+    # Handle both formats: ppo_pokemon_silver_3700000.zip and ppo_pokemon_silver_3700000_steps.zip
+    stem_parts = latest.stem.split('_')
+    
+    # Find the numeric part
+    timesteps = 0
+    for part in stem_parts:
+        try:
+            timesteps = int(part)
+            break
+        except ValueError:
+            continue
     
     return latest, timesteps
 
 def copy_best_model():
-    """Copia il best model se esiste"""
+    """Copy the best model if it exists"""
     old_best = OLD_PATH / "best_model/best_model.zip"
     if old_best.exists():
         new_best_dir = NEW_PATH / "best_model"
@@ -62,18 +54,18 @@ def main():
         cprint(f"✅ Found checkpoint: {checkpoint.name}", "green")
         cprint(f"   Timesteps completed: {timesteps:,}", "blue")
         
-        # Crea nuova directory
+        # Create new directory
         NEW_PATH.mkdir(parents=True, exist_ok=True)
         
-        # Copia checkpoint come starting point
+        # Copy checkpoint as starting point
         start_model = NEW_PATH / "start_model.zip"
         shutil.copy2(checkpoint, start_model)
         cprint(f"📁 Copied to: {start_model}", "green")
         
-        # Copia best model se esiste
+        # Copy best model if exists
         copy_best_model()
         
-        # Mostra comando per riprendere
+        # Show command to resume
         cprint("\n📝 To resume training with optimized settings, run:", "yellow")
         cprint(f"   python trainers/train_agent_optimized.py --resume {start_model} --timesteps {timesteps}", "cyan")
         
