@@ -15,13 +15,14 @@ from stable_baselines3.common.vec_env import SubprocVecEnv, VecFrameStack
 from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback, EvalCallback
 from stable_baselines3.common.logger import configure
 
-from envs.pokemon_silver_env_v2 import PokemonSilverV2
+from envs.pokemon_silver_env_v3 import PokemonSilverV3
+from envs.pokemon_silver_env_v3_simplified import PokemonSilverV3Simplified
 
 # Paths assoluti per evitare problemi
 BASE_DIR = Path(__file__).parent.parent
 ROM_PATH = BASE_DIR / "roms/Pokemon_Silver.gbc"
-SAVE_PATH = BASE_DIR / "trained_agents/exploration_v4"
-TENSORBOARD_LOG = BASE_DIR / "tensorboard/exploration_v4"
+SAVE_PATH = BASE_DIR / "trained_agents/exploration_v3"
+TENSORBOARD_LOG = BASE_DIR / "tensorboard/exploration_v3"
 
 # Configurazione ottimizzata per RTX 5080
 TOTAL_TIMESTEPS = 10_000_000
@@ -31,7 +32,7 @@ N_ENVS = 32  # Più environments per saturare GPU
 BATCH_SIZE = 8192  # Batch molto più grande per GPU
 N_STEPS = 256  # Steps ridotti per update più frequenti
 LEARNING_RATE = 3e-4
-ENT_COEF = 0.01
+ENT_COEF = 0.02
 CLIP_RANGE = 0.2
 GAE_LAMBDA = 0.95
 GAMMA = 0.99
@@ -95,10 +96,11 @@ class OptimizedProgressCallback(BaseCallback):
 def make_env(rank, seed=0):
     """Crea environment con configurazione ottimizzata"""
     def _init():
-        env = PokemonSilverV2(
+        env = PokemonSilverV3Simplified(
             rom_path=str(ROM_PATH),
             render_mode="headless",
-            max_steps=1024  # Episodi MOLTO più corti per training veloce
+            max_steps=512,  # Even shorter episodes
+            start_state="post_starter.state"  # Use new state
         )
         env = Monitor(env)
         env.reset(seed=seed + rank)

@@ -110,9 +110,6 @@ class PokemonSilverV3Simplified(gymnasium.Env):
         self.positions_history = []
         self.stuck_counter = 0
         
-        # Action tracking for diversity
-        self.last_actions = []
-        
         # Battle tracking
         self.battles_won = 0
         self.wild_pokemon_seen = 0
@@ -243,28 +240,19 @@ class PokemonSilverV3Simplified(gymnasium.Env):
             reward += 0.1  # Small reward for movement
         self.last_position = current_pos
         
-        # 5. Battle encounter reward
+        # 5. Battle reward (HP changes)
+        current_hp = self.read_hp_fraction()
         in_battle = self.read_m(0xD116) != 0
+        
         if in_battle:
-            self.wild_pokemon_seen += 1
-            if self.wild_pokemon_seen == 1:  # First encounter in episode
-                reward += 0.5
+            self.wild_pokemon_seen += 0.01  # Small reward for encountering Pokemon
+            reward += 0.1
         
         # 6. Stuck penalty
         if self.check_if_stuck():
-            reward -= 0.5 * min(self.stuck_counter, 10)  # Cap penalty
+            reward -= 0.5 * self.stuck_counter
         
-        # 7. Action diversity penalty
-        if len(self.last_actions) >= 10:
-            recent_actions = self.last_actions[-10:]
-            unique_actions = len(set(recent_actions))
-            
-            if unique_actions == 1:  # Only one action in last 10 steps
-                reward -= 0.5  # Penalty for no diversity
-            elif unique_actions <= 2:  # Only 2 different actions
-                reward -= 0.2
-        
-        # 8. Time penalty (very small)
+        # 7. Time penalty (small)
         reward -= 0.01
         
         return reward
@@ -272,11 +260,6 @@ class PokemonSilverV3Simplified(gymnasium.Env):
     def step(self, action):
         if self.save_video and self.step_count == 0:
             self.start_video()
-        
-        # Track action for diversity
-        self.last_actions.append(action)
-        if len(self.last_actions) > 20:
-            self.last_actions.pop(0)
             
         self.run_action_on_emulator(action)
         self.update_recent_actions(action)
@@ -301,34 +284,19 @@ class PokemonSilverV3Simplified(gymnasium.Env):
             "badges": self.get_badges_sum(),
             "level_sum": self.get_levels_sum(),
             "hp_fraction": self.read_hp_fraction(),
-            "position": self.get_position(),
-            "in_battle": self.read_m(0xD116) != 0,
         }
         
         return obs, reward, terminated, truncated, info
 
     def run_action_on_emulator(self, action):
-        """Execute action on emulator with proper button release"""
-        # First, release ALL buttons to prevent stuck keys
-        for release_action in self.release_actions:
-            self.pyboy.send_input(release_action)
-        
-        # Short tick to process releases
-        self.pyboy.tick(2, self.render_mode != "headless")
-        
-        # Now press the new action
         self.pyboy.send_input(self.valid_actions[action])
         
-        # Shorter press duration to make actions more responsive
-        press_step = 4  # Reduced from 8
-        self.pyboy.tick(press_step, self.render_mode != "headless")
-        
-        # Release the specific action
+        render_screen = self.save_video or self.render_mode != "headless"
+        press_step = 8
+        self.pyboy.tick(press_step, render_screen)
         self.pyboy.send_input(self.release_actions[action])
-        
-        # Complete the frame
-        remaining = self.act_freq - press_step - 2
-        self.pyboy.tick(remaining, self.render_mode != "headless")
+        self.pyboy.tick(self.act_freq - press_step - 1, render_screen)
+        self.pyboy.tick(1, True)
     
     def start_video(self):
         if self.full_frame_writer is not None:
